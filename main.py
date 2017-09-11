@@ -32,7 +32,7 @@ import argparse
 
 from lib import app
 
-VERSION = '0.1.0'
+VERSION = '0.2.0'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-ftir', '--ftir_spectra_dir', 
