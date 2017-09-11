@@ -46,9 +46,12 @@ parser.add_argument('-atr', '--atr_spectra_dir',
                     type=str, default=None)
 parser.add_argument('-o', '--output_dir', help='folder for output files (default = out)',
                     type=str, default='outs')
+parser.add_argument('-m', '--optimization_method', 
+                    help='model optimization method (tpot/neat) (default = tpot)',
+                    type=str, default='tpot')
 parser.add_argument('-p', '--population_size', 
-                    help='size of population for NEAT evolution (default = 240)',
-                    type=str, default=240)
+                    help='size of population for evolution (default = 240)',
+                    type=int, default=12)
 parser.add_argument('--processes', 
                     help='processes to use in parallel processing (default = 1)', 
                     type=int, default=1)
@@ -64,6 +67,7 @@ ftir_dir = args.ftir_spectra_dir
 dsc_file=args.dsc_file
 atr_dir = args.atr_spectra_dir
 output_dir = args.output_dir
+method = args.optimization_method
 pop_size = args.population_size
 processes = args.processes
 use_scoop = args.use_scoop
@@ -72,8 +76,10 @@ verbose = args.verbose
 app_instance = app(ftir_dir, dsc_file, 
                    atr_dir=atr_dir, 
                    output_dir=output_dir,
+                   method=method,
                    pop_size=pop_size,
                    processes=processes,
                    use_scoop=use_scoop,
                    verbose=verbose)
-app_instance.plot_spectra(style='summary')
+
+app_instance.run('tpot', 1.0)
