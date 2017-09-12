@@ -380,13 +380,18 @@ class app:
         self.model.fit(self.X, self.y)
         print('\nTest score of model is %.2f%%\n'%score)
         
+        print('\n%13s %10s %12s'%('Sample','Predicted','True value'))
+        print('%9s %10s %12s'%('-'*13,'-'*10,'-'*12))
+        for result in zip(self.y_labels,self.predictions, self.y):
+            print('%13s %10r %9r'%(result[0],bool(result[1]),bool(result[2])))
         cm = confusion_matrix(self.y, self.predictions)
         self.__plot_confusion_matrix(cm, ['Complexed', 'Non-complexed'])
         
         features = list(zip(self.x_labels, self.model.feature_importances_))
         most_important_features = sorted(features, key=lambda x: -x[1])
-        print('Top 10 most important bands:')
-        print('%15s\t%15s\t%15s\t%15s'%('Method', 'Spectrum', 'Band', 'Importance'))
+        print('\nTop 10 most important bands:')
+        print('%7s %14s %5s %10s'%('Method', 'Spectrum', 'Band', 'Importance'))
+        print('%7s %14s %5s %10s'%('-'*7, '-'*14, '-'*5, '-'*10))
         marks=[]
         for method in self.spectra.keys():
             j=0
@@ -400,7 +405,7 @@ class app:
                     marks.extend((int(band), int(band)+self.pool, method, spectrum))
                 else:
                     marks.append((int(band), int(band)+1, method, spectrum))
-                print('%15s\t%15s\t%15s\t%15.2f'%(method, spectrum, band, importance))
+                print('%7s %14s %5s %10.2f'%(method, spectrum, band, importance))
                 j+=1
                 if j>10:
                     break
@@ -493,11 +498,11 @@ class app:
                 X_mixt[system]=np.concatenate([X_mixt[system], spectra_mixt])
                 
                 
-        self.y_labels = list(X.keys())
-        y = self.thermo
+        self.y_labels = list(['Cx. '+k for k in X.keys()])
+        self.y_labels += list(['Mx. '+k for k in X.keys()])
 #        X_train, y_train = zip(*[(X[k], y[k]) for k in X.keys()])
         X_train = list(X_comp.values()) + list(X_mixt.values())
-        y_train = [1]*len(X_comp) + [0]*len(X_mixt)
+        y_train = list(self.thermo.values()) + [0]*len(X_mixt)
         
         X_test = y_test = []
         if train_ratio<1:
