@@ -50,14 +50,11 @@ parser.add_argument('-m', '--optimization_method',
                     help='model optimization method (tpot/neat) (default = tpot)',
                     type=str, default='tpot')
 parser.add_argument('-p', '--population_size', 
-                    help='size of population for evolution (default = 240)',
+                    help='size of population for evolution (default = 12)',
                     type=int, default=12)
 parser.add_argument('--processes', 
                     help='processes to use in parallel processing (default = 1)', 
                     type=int, default=1)
-parser.add_argument('--use_scoop', 
-                    help='do you want to use scoop as multiprocessing library? (default = True)', 
-                    type=bool, default=True)
 parser.add_argument('--verbose', 
                     help='verbosity level (default = 1)', 
                     type=int, default=0)
@@ -70,7 +67,6 @@ output_dir = args.output_dir
 method = args.optimization_method
 pop_size = args.population_size
 processes = args.processes
-use_scoop = args.use_scoop
 verbose = args.verbose
 
 app_instance = app(ftir_dir, dsc_file, 
@@ -79,7 +75,6 @@ app_instance = app(ftir_dir, dsc_file,
                    method=method,
                    pop_size=pop_size,
                    processes=processes,
-                   use_scoop=use_scoop,
                    verbose=verbose)
 
 app_instance.run('tpot', 1.0)

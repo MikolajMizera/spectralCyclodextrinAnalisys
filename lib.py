@@ -40,7 +40,7 @@ class app:
                  atr_dir=None,
                  output_dir='outs', 
                  method='tpot',
-                 pop_size=24,
+                 pop_size=12,
                  generations = 10,
                  processes=1,
                  use_scoop=True,
@@ -98,7 +98,6 @@ class app:
         self.pop_size = pop_size
         self.generations = generations
         self.processes = processes
-        self.use_scoop = use_scoop
         self.verbose = verbose
         self.spectra={}
         self.thermo={}
@@ -119,10 +118,7 @@ class app:
             print('\t\tPopulation size: %s'%(self.pop_size))
             print('\t\tGenerations: %s'%(self.generations))
             if self.processes > 1:
-                print('\t\tParallel processes: %s'%(self.processes))
-                if self.use_scoop:
-                   print('\t\tScoop backend will be used for parallel processing') 
-            
+                print('\t\tParallel processes: %s'%(self.processes))            
     
     def run(self, method, train_ratio):
         
@@ -134,7 +130,7 @@ class app:
                                         mutation_rate=0.9,
                                         crossover_rate=0.1,
                                         scoring='accuracy', cv=LeaveOneOut(),
-                                        subsample=1.0, n_jobs=1,
+                                        subsample=1.0, n_jobs=self.processes,
                                         max_eval_time_mins=5,
                                         random_state=None, verbosity=2,
                                         disable_update_check=True)
@@ -144,7 +140,7 @@ class app:
             self.model = NEATClassifier(generations=self.generations, 
                                         population_size=self.pop_size,
                                         scoring='accuracy', cv=5,
-                                        subsample=1.0, n_jobs=1,
+                                        subsample=1.0, n_jobs=self.processes,
                                         random_state=None,verbosity=2)
 #        self.plot_spectra('summary', output_folder='plain')
         self.__pool(5)
