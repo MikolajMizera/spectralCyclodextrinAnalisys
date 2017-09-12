@@ -32,7 +32,7 @@ import argparse
 
 from lib import app
 
-VERSION = '0.2.0'
+VERSION = '0.3.0'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-ftir', '--ftir_spectra_dir', 
@@ -75,6 +75,7 @@ app_instance = app(ftir_dir, dsc_file,
                    method=method,
                    pop_size=pop_size,
                    processes=processes,
+                   limit=2000,
                    verbose=verbose)
 
-app_instance.run('tpot', 1.0)
+app_instance.run('tree', 1.0)

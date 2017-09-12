@@ -2,8 +2,14 @@ from os import makedirs
 from os.path import isdir, join, split
 from glob import glob
 import warnings
+import itertools
 
-from sklearn.model_selection import train_test_split, LeaveOneOut, cross_val_predict
+from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.decomposition import PCA
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import train_test_split, LeaveOneOut, cross_val_predict, GridSearchCV
 from matplotlib import pyplot as plt
 import numpy as np
 from scipy import interpolate
@@ -44,6 +50,8 @@ class app:
                  generations = 10,
                  processes=1,
                  use_scoop=True,
+                 pool = None,
+                 limit = None,
                  verbose=0):
         """
         Initialization method of class app.
@@ -80,6 +88,13 @@ class app:
                 Parameter indicating wheather scoop library should be used as 
                 parallel backend.
                 default = True
+            pool : int
+                A window size for pooling function (features reduction)
+                default = None
+            limit : int
+                An upper limit of wavelength taken into consideration for model
+                development.
+                default = None
             verbose : int
                 A level of verbosity.
                 0 - only error messages are reported
@@ -98,9 +113,12 @@ class app:
         self.pop_size = pop_size
         self.generations = generations
         self.processes = processes
+        self.pool = pool
+        self.limit = limit
         self.verbose = verbose
         self.spectra={}
         self.thermo={}
+        self.model=[]
         
         if not isdir(output_dir):
             makedirs(output_dir)
@@ -134,6 +152,10 @@ class app:
                                         max_eval_time_mins=5,
                                         random_state=None, verbosity=2,
                                         disable_update_check=True)
+        elif method=='tree':
+            self.model=ExtraTreesClassifier()
+#            self.model=GridSearchCV(pipeline,
+#                         dict(pca__n_components=np.arange(10,100,10)))
         elif method=='neat':
             raise NotImplemented('NEAT backend is not implemented.')
         #not implemented
@@ -142,15 +164,15 @@ class app:
                                         scoring='accuracy', cv=5,
                                         subsample=1.0, n_jobs=self.processes,
                                         random_state=None,verbosity=2)
-#        self.plot_spectra('summary', output_folder='plain')
-        self.__pool(5)
-#        self.plot_spectra('summary', output_folder='pooled')
-        
-        X, X_test, y, y_test = self.__create_dataset(train_ratio)
+        if self.pool:
+            self.__pool(self.pool)       
+        self.X, self.X_test, self.y, self.y_test = self.__create_dataset(train_ratio)
         if self.verbose>1:
             print('Starting model fitting...')
-        self.predictions = cross_val_predict(self.model, X, y, cv=LeaveOneOut()) 
-        return self.predictions
+        self.predictions = cross_val_predict(self.model, self.X, self.y, cv=LeaveOneOut()) 
+        self.explain_model()
+        self.score = np.sum(self.predictions==self.y)
+        return self.predictions, self.y, self.score
         
     def parse_thermo(self):
         if self.verbose>1:
@@ -186,7 +208,7 @@ class app:
             
             spectrum_type=split(spectra_dir)[-1]
             if self.verbose > 1:
-                print('Parsing spectra of type %s...'%spectrum_type)
+                print('Parsing %s spectra...'%spectrum_type)
             self.spectra[spectrum_type]={}
             for system_dir in systems_dirs:
                 system=split(system_dir)[-1]
@@ -208,7 +230,8 @@ class app:
         self.__interpolate_spectra()
                 
     def plot_spectra(self, style='single', output_folder='plots', 
-                     engine='matplotlib', spacing=0.5):
+                     engine='matplotlib', spacing=0.5,
+                     mark_x_region = None):
         """
         The method plots all parsed spectra in publication-ready format.
         
@@ -232,6 +255,10 @@ class app:
                 space between spectra = max(spectrum) * spacing
                 Relevant only in "summary" plotting mode.
                 default = 0.5
+            mark_x_region : list
+                A list of ranges (min_x; max_x) which specify region to mark on 
+                plot with opaque red filling.
+                default = None
                             
         """
         
@@ -256,8 +283,8 @@ class app:
 
             for system in systems:
                 
-                if self.verbose > 1:
-                    print('Plotting %s spectra %s'%(spectra_key,'-'.join(system)))
+                if self.verbose > 2:
+                    print('Plotting %s spectra for system %s'%(spectra_key,'-'.join(system)))
                 
                 #variables required for adding spacing
                 prev_spectrum_max = 0
@@ -296,6 +323,25 @@ class app:
                              linestyle='-', 
                              label=label)
                     #Add description of each spectrum near spectrum tail
+                    if mark_x_region:
+                        for mark in mark_x_region:
+                            mark_x = np.arange(mark[0],mark[1])
+                            mask=(x==mark_x)
+                            mark_y = spectrum[mask,1].copy()+curr_spacing
+                            if mark[2] == spectra_key and mark[3] == key1:
+                                plt.scatter(mark_x,mark_y, 
+                                         color='red', 
+                                         s=2, 
+                                         marker='o',
+                                         alpha=0.8)
+                                continue
+                            if mark[2] == spectra_key and mark[3] == 'sys':
+                                plt.scatter(mark_x,mark_y, 
+                                         color='red', 
+                                         s=2, 
+                                         marker='o',
+                                         alpha=0.8)
+
                     if style=='summary':
                         plt.text(np.max(x), 
                                  np.max(y)-0.75*prev_spectrum_max,                                 
@@ -312,11 +358,66 @@ class app:
                     plt.savefig((join(self.output_dir, output_folder,plot_fname)))  
                     plt.close()
     
+    def explain_model(self, plot=True, plot_dir='plots_explained'):
+        """
+        
+        Prints statistics, predictions and plots most important features used
+        by model to make predictions.
+        
+        plot : bool
+            Switches pollting of spectra with marked bands used by model to make
+            predictions.
+            default = True
+        plot_dir : str
+            A destination directory for plots.
+            default="plots_explained"
+        
+        """
+        if self.model==[]:
+            raise RuntimeError('Model not created.')
+        
+        score = np.mean(self.predictions==self.y)*100
+        self.model.fit(self.X, self.y)
+        print('\nTest score of model is %.2f%%\n'%score)
+        
+        cm = confusion_matrix(self.y, self.predictions)
+        self.__plot_confusion_matrix(cm, ['Complexed', 'Non-complexed'])
+        
+        features = list(zip(self.x_labels, self.model.feature_importances_))
+        most_important_features = sorted(features, key=lambda x: -x[1])
+        print('Top 10 most important bands:')
+        print('%15s\t%15s\t%15s\t%15s'%('Method', 'Spectrum', 'Band', 'Importance'))
+        marks=[]
+        for method in self.spectra.keys():
+            j=0
+            for i in range(len(most_important_features)):
+                if not method==most_important_features[i][0].split('_')[1]:
+                    continue
+                spectrum=most_important_features[i][0].split('_')[0]
+                band=most_important_features[i][0].split('_')[2]
+                importance = most_important_features[i][1]
+                if self.pool:
+                    marks.extend((int(band), int(band)+self.pool, method, spectrum))
+                else:
+                    marks.append((int(band), int(band)+1, method, spectrum))
+                print('%15s\t%15s\t%15s\t%15.2f'%(method, spectrum, band, importance))
+                j+=1
+                if j>10:
+                    break
+        if plot:
+            self.plot_spectra(style='summary', output_folder=plot_dir, 
+                     engine='matplotlib', spacing=0.5,
+                     mark_x_region = marks)
+                 
     def __setup_figure(self, spectra_key, system):
         plt.figure()
         plt.title('%s spectrum of system %s - %s'%(spectra_key, system[0].upper(), system[1].upper()))
-        plt.xlim([400,4200])
-        plt.xticks(np.arange(400, 4001, 400))
+        if self.limit:
+            x_max = self.limit+200
+        else:
+            x_max = 4200
+        plt.xlim([400,x_max])
+        plt.xticks(np.arange(400, x_max+1, 400))
         plt.yticks([])
         for spine in ['top', 'right']:
             plt.gca().spines[spine].set_visible(False)
@@ -367,8 +468,14 @@ class app:
                                              k!='apis' and k!='cyclodextrins'}
         X_comp=X.copy()
         X_mixt=X.copy()
+        self.x_labels=[]
         #Merge spectra of different methods (FTIR, ATR...) for each system
-        for method in self.spectra.values():
+        for method_name, method in self.spectra.items():
+            common_x = list(method['apis'].values())[0][:,0]
+            self.x_labels.extend(['apis_%s_%d'%(method_name,w) for w in common_x])
+            self.x_labels.extend(['cyclodextrins_%s_%d'%(method_name,w) for w in common_x])
+            self.x_labels.extend(['sys_%s_%d'%(method_name,w) for w in common_x])
+
             for system in X.keys():
                 sys_spectra=method[system]
                 api_spectrum=method['apis'][system.split('_')[0]][:,1]
@@ -385,7 +492,8 @@ class app:
                 X_comp[system]=np.concatenate([X_comp[system], spectra_comp])
                 X_mixt[system]=np.concatenate([X_mixt[system], spectra_mixt])
                 
-        labels = list(X.keys())
+                
+        self.y_labels = list(X.keys())
         y = self.thermo
 #        X_train, y_train = zip(*[(X[k], y[k]) for k in X.keys()])
         X_train = list(X_comp.values()) + list(X_mixt.values())
@@ -442,6 +550,8 @@ class app:
             self.parse_spectra()
 
         min_x, max_x = self.__find_common_bounds()
+        if self.limit:
+            max_x=self.limit
         new_x = np.arange(min_x, max_x)
         for methods in self.spectra.keys():
             for systems in self.spectra[methods].keys():
@@ -505,3 +615,38 @@ class app:
         else:
             raise TypeError("Undefined type for flatten: %s"%type(d))
         return res
+    
+    def __plot_confusion_matrix(self, cm, classes,
+                          normalize=False,
+                          title='Confusion matrix',
+                          cmap=plt.cm.Blues):
+        """
+        This function prints and plots the confusion matrix.
+        Normalization can be applied by setting `normalize=True`.
+        Source: sklearn maunal examples
+        """
+        if normalize:
+            cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+            print("Normalized confusion matrix")
+        else:
+            print('Confusion matrix, without normalization')
+    
+        print(cm)
+    
+        plt.imshow(cm, interpolation='nearest', cmap=cmap)
+        plt.title(title)
+        plt.colorbar()
+        tick_marks = np.arange(len(classes))
+        plt.xticks(tick_marks, classes, rotation=45)
+        plt.yticks(tick_marks, classes)
+    
+        fmt = '.2f' if normalize else 'd'
+        thresh = cm.max() / 2.
+        for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+            plt.text(j, i, format(cm[i, j], fmt),
+                     horizontalalignment="center",
+                     color="white" if cm[i, j] > thresh else "black")
+    
+        plt.tight_layout()
+        plt.ylabel('True label')
+        plt.xlabel('Predicted label')
