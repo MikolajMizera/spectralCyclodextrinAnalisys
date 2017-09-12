@@ -3,6 +3,7 @@ from os.path import isdir, join, split
 from glob import glob
 import warnings
 import itertools
+import copy
 
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.tree import DecisionTreeClassifier
@@ -49,7 +50,6 @@ class app:
                  pop_size=12,
                  generations = 10,
                  processes=1,
-                 use_scoop=True,
                  pool = None,
                  limit = None,
                  verbose=0):
@@ -138,11 +138,11 @@ class app:
             if self.processes > 1:
                 print('\t\tParallel processes: %s'%(self.processes))            
     
-    def run(self, method, train_ratio):
+    def run(self, train_ratio=1.0):
         
         self.parse_spectra()
         
-        if method=='tpot':
+        if self.method=='tpot':
             self.model = TPOTClassifier(generations=self.generations, 
                                         population_size=self.pop_size,
                                         mutation_rate=0.9,
@@ -152,11 +152,9 @@ class app:
                                         max_eval_time_mins=5,
                                         random_state=None, verbosity=2,
                                         disable_update_check=True)
-        elif method=='tree':
+        elif self.method=='tree':
             self.model=ExtraTreesClassifier()
-#            self.model=GridSearchCV(pipeline,
-#                         dict(pca__n_components=np.arange(10,100,10)))
-        elif method=='neat':
+        elif self.method=='neat':
             raise NotImplemented('NEAT backend is not implemented.')
         #not implemented
             self.model = NEATClassifier(generations=self.generations, 
@@ -165,6 +163,7 @@ class app:
                                         subsample=1.0, n_jobs=self.processes,
                                         random_state=None,verbosity=2)
         if self.pool:
+            self.original_spectra=copy.deepcopy(self.spectra)
             self.__pool(self.pool)       
         self.X, self.X_test, self.y, self.y_test = self.__create_dataset(train_ratio)
         if self.verbose>1:
@@ -231,7 +230,7 @@ class app:
                 
     def plot_spectra(self, style='single', output_folder='plots', 
                      engine='matplotlib', spacing=0.5,
-                     mark_x_region = None):
+                     mark_x_region = None, spectra = None):
         """
         The method plots all parsed spectra in publication-ready format.
         
@@ -259,7 +258,10 @@ class app:
                 A list of ranges (min_x; max_x) which specify region to mark on 
                 plot with opaque red filling.
                 default = None
-                            
+            spectra : dict
+                A dictionary of spectra, argument for plotting arbitrary 
+                spectra instead of current ones.
+                default = None
         """
         
         assert style=='single' or style=='summary'
@@ -271,20 +273,23 @@ class app:
             engine='matplotlib'
             
         #Check if there are parsed spectra already, if not - try to parse
-        if not len(self.spectra):
+        if not len(self.spectra) and not spectra:
             self.parse_spectra()
+        if not spectra:
+            spectra=self.spectra
         
         #Create plot subfolder of not exists                
         if not isdir(join(self.output_dir, output_folder)):
             makedirs(join(self.output_dir, output_folder))
             
-        for spectra_key, systems in self.spectra.items():
+        for spectra_key, systems in spectra.items():
             systems = [k.split('_') for k in systems.keys() if len(k.split('_'))>1]
 
             for system in systems:
                 
                 if self.verbose > 2:
-                    print('Plotting %s spectra for system %s'%(spectra_key,'-'.join(system)))
+                    print('Plotting %s spectra for system %s'%
+                                              (spectra_key,'-'.join(system)))
                 
                 #variables required for adding spacing
                 prev_spectrum_max = 0
@@ -312,7 +317,7 @@ class app:
                     if style=='single':
                         self.__setup_figure(spectra_key, system)
                     
-                    spectrum=self.spectra[spectra_key][key1][key2]
+                    spectrum=spectra[spectra_key][key1][key2]
                     x=spectrum[:,0]
                     y=spectrum[:,1].copy()
                     prev_spectrum_max=np.max(y)
@@ -326,8 +331,9 @@ class app:
                     if mark_x_region:
                         for mark in mark_x_region:
                             mark_x = np.arange(mark[0],mark[1])
-                            mask=(x==mark_x)
-                            mark_y = spectrum[mask,1].copy()+curr_spacing
+                            y_l=np.argmax(spectrum[:,0]==mark[0])
+                            y_h=np.argmax(spectrum[:,0]==mark[1])
+                            mark_y = spectrum[y_l:y_h,1].copy()+curr_spacing
                             if mark[2] == spectra_key and mark[3] == key1:
                                 plt.scatter(mark_x,mark_y, 
                                          color='red', 
@@ -402,7 +408,7 @@ class app:
                 band=most_important_features[i][0].split('_')[2]
                 importance = most_important_features[i][1]
                 if self.pool:
-                    marks.extend((int(band), int(band)+self.pool, method, spectrum))
+                    marks.append((int(band), int(band)+self.pool, method, spectrum))
                 else:
                     marks.append((int(band), int(band)+1, method, spectrum))
                 print('%7s %14s %5s %10.2f'%(method, spectrum, band, importance))
@@ -412,7 +418,8 @@ class app:
         if plot:
             self.plot_spectra(style='summary', output_folder=plot_dir, 
                      engine='matplotlib', spacing=0.5,
-                     mark_x_region = marks)
+                     mark_x_region = marks,
+                     spectra = self.original_spectra)
                  
     def __setup_figure(self, spectra_key, system):
         plt.figure()
