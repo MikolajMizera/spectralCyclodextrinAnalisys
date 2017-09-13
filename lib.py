@@ -18,6 +18,11 @@ import matplotlib
 if environ.get('DISPLAY')==None and (_platform == 'linux' or _platform == 'linux2'):
     matplotlib.use('Agg')
 from matplotlib import pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.collections import PolyCollection
+import matplotlib.pyplot as plt
+from matplotlib import colors as mcolors
+
 import numpy as np
 from scipy import interpolate
 
@@ -278,7 +283,7 @@ class app:
         if not spectra:
             spectra=self.spectra
         
-        #Create plot subfolder of not exists                
+        #Create plot subfolder if not exists                
         if not isdir(join(self.output_dir, output_folder)):
             makedirs(join(self.output_dir, output_folder))
             
@@ -364,6 +369,60 @@ class app:
                     plt.savefig((join(self.output_dir, output_folder,plot_fname)))  
                     plt.close()
     
+    def plot_multispectra(self, output_folder, spectra=None):
+        def cc(arg):
+            return mcolors.to_rgba(arg, alpha=0.6)
+         #Check if there are parsed spectra already, if not - try to parse
+        if not len(self.spectra) and not spectra:
+            self.parse_spectra()
+        if not spectra:
+            spectra=self.spectra
+            
+        #Create plot subfolder if not exists                
+        if not isdir(join(self.output_dir, output_folder)):
+            makedirs(join(self.output_dir, output_folder))     
+         
+        fig = plt.figure()
+        ax = fig.gca(projection='3d')
+        #list of vertices to append
+        
+        methods = list(spectra.keys())
+        apis=list(spectra['ftir']['apis'])
+        cds=list(spectra['ftir']['cyclodextrins'])
+        for system_type in ['mixture', 'complex']:
+            for api in apis:
+                for cd in cds:
+                    verts = []   
+                    zs=np.arange(0,7,1)
+                    y_tickers=[]
+                    for method in methods:
+                        y_tickers+=[method+' '+self.shortcuts[api].replace('_',' '),
+                               method+' '+self.shortcuts[cd],
+                               method+' '+self.shortcuts[api].replace('_',' ')+' - '+self.shortcuts[cd],
+                               ]
+                        spectra_to_plot=[spectra[method]['apis'][api], 
+                                         spectra[method]['cyclodextrins'][cd],
+                                         spectra[method][api+'_'+cd][system_type]]
+                        for spectrum in spectra_to_plot:
+                            ys=spectrum[:,1]
+                            xs=spectrum[:,0]
+                            verts.append(self.__polygon_under_graph(xs, ys))
+            
+                    poly = PolyCollection(verts, 
+                                          facecolors=[cc('r'), cc('g'), cc('b'), cc('m'), cc('c'), cc('k')])
+                    ax.add_collection3d(poly, zs=zs, zdir='y')
+                    ax.set_xlim(min(spectra_to_plot[0][:,0]), max(spectra_to_plot[0][:,0]))
+                    ax.set_zlim(min(spectra_to_plot[0][:,1]), max(spectra_to_plot[0][:,1]))
+                    ax.set_ylim(0, max(zs))
+                    ax.set_yticklabels(y_tickers,rotation=-15,
+                                       verticalalignment='baseline',
+                                       horizontalalignment='left')
+                    ax.set_xlabel('Wavelength $[cm^1]$')
+                    ax.set_zlabel('Instensity')
+                    plt.show()
+                    plot_fname='%s_%s_%s.png'%(system_type, api, cd)
+                    plt.savefig((join(self.output_dir, output_folder,plot_fname)))
+                    plt.close()
     def explain_model(self, plot=True, plot_dir='plots_explained'):
         """
         
@@ -662,3 +721,11 @@ class app:
         plt.tight_layout()
         plt.ylabel('True label')
         plt.xlabel('Predicted label')
+        
+    def __polygon_under_graph(self, xlist, ylist):
+        """
+        SOURCE: matplotlib manual
+        Construct the vertex list which defines the polygon filling the space under
+        the (xlist, ylist) line graph.  Assumes the xs are in ascending order.
+        """
+        return [(xlist[0], 0.)] + list(zip(xlist, ylist)) + [(xlist[-1], 0.)]
