@@ -1,5 +1,6 @@
-from os import makedirs
+from os import makedirs, environ
 from os.path import isdir, join, split
+from sys import platform as _platform
 from glob import glob
 import warnings
 import itertools
@@ -11,6 +12,11 @@ from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split, LeaveOneOut, cross_val_predict, GridSearchCV
+
+#matplotlib requires DISPLAY var to be defined (only on Linux)
+import matplotlib
+if environ.get('DISPLAY')==None and (_platform == 'linux' or _platform == 'linux2'):
+    matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 import numpy as np
 from scipy import interpolate
