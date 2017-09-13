@@ -104,9 +104,8 @@ class app:
             verbose : int
                 A level of verbosity.
                 0 - only error messages are reported
-                1 - only final scores are reported + LEVEL 0
-                2 - NEAT evolution is reported + LEVEL 1
-                3 - system information + LEVEL 2
+                1 - runtime messages are reported
+                2 - more detailed runtime messages are reported
                 default = 1
         
         """
@@ -126,10 +125,10 @@ class app:
         self.thermo={}
         self.model=[]
         
-        if not isdir(output_dir):
-            makedirs(output_dir)
+        if not isdir(self.output_dir):
+            makedirs(self.output_dir)
             
-        if self.verbose>1:
+        if self.verbose>0:
             print('Initializing application with parameters:')
             print('\tDirectories:')
             print('\t\tFT-IR spectra: /%s'%(self.ftir_dir))
@@ -156,31 +155,26 @@ class app:
                                         scoring='accuracy', cv=LeaveOneOut(),
                                         subsample=1.0, n_jobs=self.processes,
                                         max_eval_time_mins=5,
-                                        random_state=None, verbosity=2,
+                                        random_state=None, verbosity=self.vebose,
                                         disable_update_check=True)
         elif self.method=='tree':
             self.model=ExtraTreesClassifier()
         elif self.method=='neat':
             raise NotImplemented('NEAT backend is not implemented.')
-        #not implemented
-            self.model = NEATClassifier(generations=self.generations, 
-                                        population_size=self.pop_size,
-                                        scoring='accuracy', cv=5,
-                                        subsample=1.0, n_jobs=self.processes,
-                                        random_state=None,verbosity=2)
         if self.pool:
             self.original_spectra=copy.deepcopy(self.spectra)
             self.__pool(self.pool)       
         self.X, self.X_test, self.y, self.y_test = self.__create_dataset(train_ratio)
-        if self.verbose>1:
+        if self.verbose>0:
             print('Starting model fitting...')
         self.predictions = cross_val_predict(self.model, self.X, self.y, cv=LeaveOneOut()) 
         self.explain_model()
-        self.score = np.sum(self.predictions==self.y)
-        return self.predictions, self.y, self.score
+        with open(join(self.output_dir,'final_model.pkl'), 'wb') as f:
+            f.write(self.model)
+        print('Program finished.')
         
     def parse_thermo(self):
-        if self.verbose>1:
+        if self.verbose>0:
             print('Parsing DSC data...')
         self.thermo={}
         with open(self.dsc_file, 'r') as f:
@@ -212,7 +206,7 @@ class app:
                 continue
             
             spectrum_type=split(spectra_dir)[-1]
-            if self.verbose > 1:
+            if self.verbose > 0:
                 print('Parsing %s spectra...'%spectrum_type)
             self.spectra[spectrum_type]={}
             for system_dir in systems_dirs:
@@ -220,7 +214,7 @@ class app:
                 self.spectra[spectrum_type][system]={} 
                 spectra_files=glob(join(system_dir,'*'))                   
                 if not len(spectra_files):
-                    if self.verbose > 1:
+                    if self.verbose > 0:
                         print('The directory %s contains no spectra.'%system_dir)
                         continue
                 for s_file in spectra_files:
@@ -230,7 +224,7 @@ class app:
                     self.spectra[spectrum_type][system][spectrum_name]=parsed
         if not len(self.spectra):
             raise RuntimeError('Could not parse any spectra.')
-        if self.verbose>1:
+        if self.verbose>0:
             print('Finished parsing spectra...')
         self.__interpolate_spectra()
                 
@@ -293,7 +287,7 @@ class app:
 
             for system in systems:
                 
-                if self.verbose > 2:
+                if self.verbose > 1:
                     print('Plotting %s spectra for system %s'%
                                               (spectra_key,'-'.join(system)))
                 
@@ -450,7 +444,7 @@ class app:
                     new_y=self.__apply_pooling(spectrum[:,1], window, method='max')
                     new_x=self.__apply_pooling(spectrum[:,0], window, method='min')
                     self.spectra[methods][systems][spectrum_k]=np.array([new_x, new_y]).T
-        if self.verbose>1:
+        if self.verbose>0:
             print('Finished pooling...')
 
     
@@ -523,7 +517,7 @@ class app:
                                                                 y_train, 
                                                                 train_size=train_ratio,
                                                                 test_size=test_ratio)
-        if self.verbose>1:
+        if self.verbose>0:
             print('Created dataset of %d training examples and %d test examples'%
                   (len(X_train), len(X_test)))
         return np.array(X_train), X_test,  np.array(y_train), y_test
@@ -578,7 +572,7 @@ class app:
                     f = interpolate.interp1d(spectrum[:,0], spectrum[:,1])
                     new_y=f(new_x)
                     self.spectra[methods][systems][spectrum_k]=np.array([new_x, new_y]).T
-        if self.verbose>1:
+        if self.verbose>0:
             print('Finished spectra interpolation to range (%d, %d)...'%(min_x, max_x))
     
     def __find_common_bounds(self):
@@ -604,7 +598,7 @@ class app:
                 if len(spectrum):
                     continue
             except:
-                if self.verbose>2:
+                if self.verbose>1:
                     print('Parsing file %s failed, trying different delimiter'%file)
                 continue
         if not len(spectrum):

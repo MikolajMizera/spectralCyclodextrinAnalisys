@@ -1,9 +1,23 @@
 """
-The programm
 
+A script used for classifcation of spectra of cyclodextrins  - APIs systems into 
+one of two classes: complexed/uncomplexed.
+
+The input data used for building feature vectors constitute absorbtion ftir 
+and/or atr data from specified folders.
+Example input spectrum:
+    file "ca.csv" - contains cefuroxime axetil spectrum
+        <wavelength><delimiter><absorbtion><newline>
+
+The target data are read from file and should contain information wheather 
+given sample contain complex and should be marked as binary 1. If given sample 
+contains phisical mixture or not complexed sample, it should be marked with binary 0.
+Example target file:
+    file "dsc" - contains target data
+        <system><space><0/1><newline>
 
 Naming convention
-The porgramm uses following naming convention:
+The porgramm uses following folder naming convention:
     1. Spectral data should be placed in "ftir" (obligatory) and "atr" (optional)
     2. Subfolders should contain spectra of investigated systems eg. :
         - ftir
@@ -22,27 +36,26 @@ The porgramm uses following naming convention:
             - ca_acd                # for ATR spectra of API - CD system
                 - complex.csv
                 - mixture.tsv
-    3. File with DSC results should be in text format <system 0/1 /newline/> eg. "ca_acd 1",
-    which translates to "the complex formation in sample ca_acd was confirmed"
-Basing on "ftir" folder, the porgramm will discover all investigated samples and 
-create internal databse and datasets for machine learning.
+
+Basing on "ftir" folder, the porgramm will discover all investigated samples 
+and will create internal databse and datasets for machine learning.
 
 """
 import argparse
 
 from lib import app
 
-VERSION = '0.3.0'
+VERSION = '0.4.0_RC1'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-ftir', '--ftir_spectra_dir', 
-                    help='path to directory containing FTIR spectra of samples',
+                    help='path to directory containing absorbtion FTIR spectra of samples',
                     type=str)
 parser.add_argument('-dsc', '--dsc_file', 
                     help='file with dsc results',
                     type=str)
 parser.add_argument('-atr', '--atr_spectra_dir', 
-                    help='path to directory containing FTIR spectra of samples (default = None)',
+                    help='path to directory containing ATR-FTIR spectra of samples (default = None)',
                     type=str, default=None)
 parser.add_argument('-o', '--output_dir', help='folder for output files (default = out)',
                     type=str, default='outs')
@@ -63,7 +76,7 @@ parser.add_argument('--pool',
                     type=int, default=None)
 parser.add_argument('--verbose', 
                     help='verbosity level (default = 1)', 
-                    type=int, default=0)
+                    type=int, default=1)
 args=parser.parse_args()
 
 ftir_dir = args.ftir_spectra_dir
