@@ -99,5 +99,5 @@ app_instance = app(ftir_dir, dsc_file,
                    limit=limit,
                    pool=pool,
                    verbose=verbose)
-app_instance.plot_multispectra('d3')
-#app_instance.run()
+#app_instance.plot_multispectra('d3')
+app_instance.run()

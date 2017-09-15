@@ -27,7 +27,7 @@ import numpy as np
 from scipy import interpolate
 
 from tpot import TPOTClassifier
-#from neat import NEATClassifier
+from NEATClassifier import NEATClassifier
 
 try:
     import plotly.offline as offline
@@ -165,13 +165,17 @@ class app:
         elif self.method=='tree':
             self.model=ExtraTreesClassifier()
         elif self.method=='neat':
-            raise NotImplemented('NEAT backend is not implemented.')
+            self.model = NEATClassifier(generations = self.generations, 
+                                        population_size = self.pop_size,
+                                        scoring='accuracy', n_jobs=1,
+                                        max_time_msec=45, verbosity=2)
         if self.pool:
             self.original_spectra=copy.deepcopy(self.spectra)
             self.__pool(self.pool)       
         self.X, self.X_test, self.y, self.y_test = self.__create_dataset(train_ratio)
         if self.verbose>0:
             print('Starting model fitting...')
+        self.model.fit(self.X, self.y)
         self.predictions = cross_val_predict(self.model, self.X, self.y, cv=LeaveOneOut()) 
         self.explain_model()
         with open(join(self.output_dir,'final_model.pkl'), 'wb') as f:
@@ -382,8 +386,6 @@ class app:
         if not isdir(join(self.output_dir, output_folder)):
             makedirs(join(self.output_dir, output_folder))     
          
-        fig = plt.figure()
-        ax = fig.gca(projection='3d')
         #list of vertices to append
         
         methods = list(spectra.keys())
@@ -392,13 +394,16 @@ class app:
         for system_type in ['mixture', 'complex']:
             for api in apis:
                 for cd in cds:
+                    fig = plt.figure()
+                    ax = fig.gca(projection='3d')
                     verts = []   
                     zs=np.arange(0,7,1)
                     y_tickers=[]
                     for method in methods:
-                        y_tickers+=[method+' '+self.shortcuts[api].replace('_',' '),
-                               method+' '+self.shortcuts[cd],
-                               method+' '+self.shortcuts[api].replace('_',' ')+' - '+self.shortcuts[cd],
+                        y_tickers+=[method.upper()+' '+api.upper(),
+                               method.upper()+' '+self.shortcuts[cd].replace('cyclodextrin', 'CD'),
+                               method.upper()+' '+api.upper()+
+                                           ' - '+self.shortcuts[cd].replace('cyclodextrin', 'CD'),
                                ]
                         spectra_to_plot=[spectra[method]['apis'][api], 
                                          spectra[method]['cyclodextrins'][cd],
@@ -411,14 +416,23 @@ class app:
                     poly = PolyCollection(verts, 
                                           facecolors=[cc('r'), cc('g'), cc('b'), cc('m'), cc('c'), cc('k')])
                     ax.add_collection3d(poly, zs=zs, zdir='y')
-                    ax.set_xlim(min(spectra_to_plot[0][:,0]), max(spectra_to_plot[0][:,0]))
-                    ax.set_zlim(min(spectra_to_plot[0][:,1]), max(spectra_to_plot[0][:,1]))
+                    x_max=max(spectra_to_plot[0][:,0])
+                    x_min=min(spectra_to_plot[0][:,0])
+                    y_max=max(spectra_to_plot[0][:,1])
+                    y_min=min(spectra_to_plot[0][:,1])
+                    ax.set_xlim(x_min, x_max)
+                    ax.set_zlim(y_min, y_max)
                     ax.set_ylim(0, max(zs))
                     ax.set_yticklabels(y_tickers,rotation=-15,
                                        verticalalignment='baseline',
                                        horizontalalignment='left')
+                    plt.xticks(np.arange(400, x_max+1, 800))
+
                     ax.set_xlabel('Wavelength $[cm^1]$')
+                    ax.xaxis.labelpad = 10
                     ax.set_zlabel('Instensity')
+                    plt.tight_layout(rect=(0, 0.15, 0.8, 1))
+
                     plt.show()
                     plot_fname='%s_%s_%s.png'%(system_type, api, cd)
                     plt.savefig((join(self.output_dir, output_folder,plot_fname)))
