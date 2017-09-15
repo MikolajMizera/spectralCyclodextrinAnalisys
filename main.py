@@ -46,51 +46,51 @@ import argparse
 from lib import app
 
 VERSION = '0.4.0_RC1'
-
-parser = argparse.ArgumentParser()
-parser.add_argument('-ftir', '--ftir_spectra_dir', 
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-ftir', '--ftir_spectra_dir', 
                     help='path to directory containing absorbtion FTIR spectra of samples',
                     type=str)
-parser.add_argument('-dsc', '--dsc_file', 
+    parser.add_argument('-dsc', '--dsc_file', 
                     help='file with dsc results',
                     type=str)
-parser.add_argument('-atr', '--atr_spectra_dir', 
+    parser.add_argument('-atr', '--atr_spectra_dir', 
                     help='path to directory containing ATR-FTIR spectra of samples (default = None)',
                     type=str, default=None)
-parser.add_argument('-o', '--output_dir', help='folder for output files (default = out)',
+    parser.add_argument('-o', '--output_dir', help='folder for output files (default = out)',
                     type=str, default='outs')
-parser.add_argument('-m', '--optimization_method', 
+    parser.add_argument('-m', '--optimization_method', 
                     help='model optimization method (tpot/tree) (default = tpot)',
                     type=str, default='tpot')
-parser.add_argument('-p', '--population_size', 
+    parser.add_argument('-p', '--population_size', 
                     help='size of population for evolution (default = 12)',
                     type=int, default=12)
-parser.add_argument('--processes', 
+    parser.add_argument('--processes', 
                     help='processes to use in parallel processing (default = 1)', 
                     type=int, default=1)
-parser.add_argument('-l', '--limit',
+    parser.add_argument('-l', '--limit',
                     help='upper limit of spectra wavelength, only data below limit will be used (default = None)',
                     type=int, default=None)
-parser.add_argument('--pool',
+    parser.add_argument('--pool',
                     help='window size for pooling spectra for dimensionality reduction (default = None)',
                     type=int, default=None)
-parser.add_argument('--verbose', 
+    parser.add_argument('--verbose', 
                     help='verbosity level (default = 1)', 
                     type=int, default=1)
-args=parser.parse_args()
-
-ftir_dir = args.ftir_spectra_dir
-dsc_file=args.dsc_file
-atr_dir = args.atr_spectra_dir
-output_dir = args.output_dir
-method = args.optimization_method
-pop_size = args.population_size
-processes = args.processes
-pool = args.pool
-limit = args.limit
-verbose = args.verbose
-
-app_instance = app(ftir_dir, dsc_file, 
+    args=parser.parse_args()
+    
+    ftir_dir = args.ftir_spectra_dir
+    dsc_file=args.dsc_file
+    atr_dir = args.atr_spectra_dir
+    output_dir = args.output_dir
+    method = args.optimization_method
+    pop_size = args.population_size
+    processes = args.processes
+    pool = args.pool
+    limit = args.limit
+    verbose = args.verbose
+    
+    app_instance = app(ftir_dir, dsc_file, 
                    atr_dir=atr_dir, 
                    output_dir=output_dir,
                    method=method,
@@ -99,5 +99,6 @@ app_instance = app(ftir_dir, dsc_file,
                    limit=limit,
                    pool=pool,
                    verbose=verbose)
-#app_instance.plot_multispectra('d3')
-app_instance.run()
+
+
+    app_instance.run()

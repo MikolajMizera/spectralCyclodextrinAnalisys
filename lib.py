@@ -167,7 +167,7 @@ class app:
         elif self.method=='neat':
             self.model = NEATClassifier(generations = self.generations, 
                                         population_size = self.pop_size,
-                                        scoring='accuracy', n_jobs=1,
+                                        scoring='accuracy', n_jobs=self.processes,
                                         max_time_msec=45, verbosity=2)
         if self.pool:
             self.original_spectra=copy.deepcopy(self.spectra)
@@ -175,8 +175,19 @@ class app:
         self.X, self.X_test, self.y, self.y_test = self.__create_dataset(train_ratio)
         if self.verbose>0:
             print('Starting model fitting...')
-        self.model.fit(self.X, self.y)
-        self.predictions = cross_val_predict(self.model, self.X, self.y, cv=LeaveOneOut()) 
+        if self.method=='neat':
+            #Neat wrapper is not compatible with cross_val_predict yet
+            self.predictions=[]
+            for i in range(len(self.X)):
+                X_test = self.X[i,:]
+                y_test = self.y[i]
+                X_train = np.delete(self.X, (i), axis=0)
+                y_train = np.delete(self.y, (i), axis=0)
+                self.model.fit(X_train, y_train)
+                y_pred=self.model.predict([X_test], [y_test])
+                self.predictions.append(y_pred)
+        else:
+            self.predictions = cross_val_predict(self.model, self.X, self.y, cv=LeaveOneOut()) 
         self.explain_model()
         with open(join(self.output_dir,'final_model.pkl'), 'wb') as f:
             f.write(self.model)

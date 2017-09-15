@@ -5,7 +5,7 @@ Created on Mon Sep 11 19:00:09 2017
 @author: user
 """
 import os
-
+import pickle
 import numpy as np
 
 from sklearn.base import BaseEstimator, ClassifierMixin
@@ -20,18 +20,16 @@ class NEATClassifier(BaseEstimator, ClassifierMixin):
     Wrapper for neat library that can be used with sciki-learn pipelines
     
     """   
+  
     
     def __init__(self, generations = 100, population_size = 100,
                  scoring='accuracy', n_jobs=1, warm_start=False,
                  max_time_msec=45, verbosity=2,
                  config_filename='config-iznn.txt',
                  use_scoop = False):
-        #Scoring function dictionary initializaion
-        self.scoring_fcns = {'accuracy': self.__acc}
-        
         self.generations = generations
         self.population_size = population_size
-        self.scoring_fcn = self.scoring_fcns[scoring]
+        self.scoring_fcn = NEATClassifier.scoring_fcns(scoring)
         self.n_jobs = n_jobs
         self.verbosity = verbosity
         self.max_time_msec = max_time_msec
@@ -42,6 +40,7 @@ class NEATClassifier(BaseEstimator, ClassifierMixin):
         self.warm_start=warm_start
         self.winner = None
         self.p = None
+         
         
     def predict(self, X):
         if not self.winner:
@@ -55,14 +54,29 @@ class NEATClassifier(BaseEstimator, ClassifierMixin):
         self.__prepare_data()
         if not self.warm_start or self.p==None:
             self.__initialize_population()
-        def eval_fcn(genomes, config):
-            return self.__eval_genomes(genomes)
-        
-        if self.n_jobs>1:
-            pe = neat.ParallelEvaluator(self.n_jobs, eval_fcn, use_scoop=self.use_scoop)
-            self.winner = self.p.run(pe.evaluate, self.generations)
-        else:            
-            self.winner = self.p.run(eval_fcn, self.generations)
+            
+        if self.n_jobs==1:
+            def cost_fcn(genomes, config):
+                return self.__eval_genomes(genomes)
+            eval_fcn=cost_fcn
+        else:      
+            #in parallel mode each eval_fcn call will recive single genome 
+            # - so wrap it with list with single element and return fitness
+            # Passing numpy array in not elegant way - would be more efficient
+            # to use shared memory
+            def cost_fcn(genome, config):
+                fitness = NEATClassifier.eval_genome_parallel(genome,
+                                                             config, 
+                                                             pickle.dumps(self.inputs), 
+                                                             pickle.dumps(self.targets), 
+                                                             self.max_time_msec,
+                                                             self.scoring_fcn)
+                return fitness
+            pe = neat.ParallelEvaluator(self.n_jobs, 
+                                              cost_fcn, 
+                                              use_scoop=self.use_scoop)
+            eval_fcn=pe.evaluate
+        self.winner = self.p.run(eval_fcn, self.generations)
 
         self.score = self.winner.fitness
     
@@ -70,6 +84,53 @@ class NEATClassifier(BaseEstimator, ClassifierMixin):
         if not self.winner:
             raise RuntimeError('Estimator not fitted, call `fit` before exploiting the model')
         return self.__test_genome(self.winner, X, y)
+    
+    #Ugly redundancy
+    @staticmethod
+    def eval_genome_parallel(genome, config, inputs, targets ,max_time_msec, score_fcn):
+        try:
+            inputs=pickle.loads(inputs)
+            targets=pickle.loads(targets)
+            net = neat.iznn.IZNN.create(genome, config)
+            dt = net.get_time_step_msec()
+            y_pred=[]
+            for idata in inputs:
+                neuron_data = {}
+                tn=[]
+                vn=[]
+                for i, n in net.neurons.items():
+                    neuron_data[i] = []
+                    tn.append(None)
+                    vn.append(None)
+        
+                # Reset the network, apply the inputs, and run for the maximum allowed time.
+                net.reset()
+                net.set_inputs(idata)
+                num_steps = int(max_time_msec / dt)
+                net.set_inputs(idata)
+                for j in range(num_steps):
+                    t = dt * j
+                    output = net.advance(dt)
+                    for i, n in net.neurons.items():
+                        neuron_data[i].append((t, n.current, n.v, n.u, n.fired))
+                        if tn[i]==None and output[i]>0:
+                            tn[i]=neuron_data[net.outputs[0]][-2][0]
+                            vn[i]=neuron_data[net.outputs[0]][-2][2]
+                            
+                if np.any(np.array(tn)==None)  or np.any(np.array(vn)==None):
+                    response = [-1 for n in tn][1:]
+                else:
+                    #will return 0 or 1 for each otuput
+                    t0=tn[0]
+                    response = (t0-np.array(tn[1:]))>0
+                    response = response.astype(int)
+                
+                y_pred.append(response)
+    
+            score = score_fcn(targets, y_pred)
+            return score
+        except:
+            return 0
     
     def __prepare_data(self):
         #Classes should be whole numbers    
@@ -160,6 +221,10 @@ class NEATClassifier(BaseEstimator, ClassifierMixin):
             y_pred.append(response)    
         return np.array(y_pred)
     
-    def __acc(self, y, y_pred):
-        return np.mean(y==y_pred)
+    @staticmethod
+    def scoring_fcns(fcn):
+        def acc(y, y_pred):
+            return np.mean(y==y_pred)
+        if fcn == 'accuracy':        
+            return acc
         
