@@ -160,7 +160,7 @@ class app:
                                         scoring='accuracy', cv=LeaveOneOut(),
                                         subsample=1.0, n_jobs=self.processes,
                                         max_eval_time_mins=5,
-                                        random_state=None, verbosity=self.vebose,
+                                        random_state=None, verbosity=self.verbose,
                                         disable_update_check=True)
         elif self.method=='tree':
             self.model=ExtraTreesClassifier()
@@ -174,20 +174,16 @@ class app:
             self.__pool(self.pool)       
         self.X, self.X_test, self.y, self.y_test = self.__create_dataset(train_ratio)
         if self.verbose>0:
-            print('Starting model fitting...')
-        if self.method=='neat':
-            #Neat wrapper is not compatible with cross_val_predict yet
-            self.predictions=[]
-            for i in range(len(self.X)):
-                X_test = self.X[i,:]
-                y_test = self.y[i]
-                X_train = np.delete(self.X, (i), axis=0)
-                y_train = np.delete(self.y, (i), axis=0)
-                self.model.fit(X_train, y_train)
-                y_pred=self.model.predict([X_test], [y_test])
-                self.predictions.append(y_pred)
-        else:
-            self.predictions = cross_val_predict(self.model, self.X, self.y, cv=LeaveOneOut()) 
+            print('Starting model cross-testing...')
+        self.predictions=[]
+        for i in range(len(self.X)):
+            X_test = self.X[i,:]
+            y_test = self.y[i]
+            X_train = np.delete(self.X, (i), axis=0)
+            y_train = np.delete(self.y, (i), axis=0)
+            self.model.fit(X_train, y_train)
+            y_pred=self.model.predict([X_test])
+            self.predictions.append(y_pred)
         self.explain_model()
         with open(join(self.output_dir,'final_model.pkl'), 'wb') as f:
             f.write(self.model)
